@@ -29,6 +29,19 @@ typedef union
 	}bits;
 }DataRegister;
 
+typedef union
+{
+	unsigned int value;
+	struct
+	{
+		unsigned int hex4:8;	//lsb
+		unsigned int hex5:8;
+		unsigned int unused:16;
+
+
+	}bits;
+}DataRegister2;
+
 int getHour() {
     time_t now;
     struct tm *timeinfo;
@@ -45,12 +58,20 @@ int getMinute() {
     timeinfo = localtime(&now);
     return timeinfo->tm_min;
 }
+int getSecond() {
+    time_t now;
+    struct tm *timeinfo;
 
+    time(&now);
+    timeinfo = localtime(&now);
+    return timeinfo->tm_sec;
+}
 /* This program increments the contents of the red LED parallel port */
 int main(void)
 {
    volatile signed int * LEDR_ptr;   // virtual address pointer to red LEDs
    volatile signed int * HEX_ptr;	//virutal address pointer to Hex Dispay
+   volatile signed int * HEX_ptr2;
    int fd = -1;               // used to open /dev/mem for access to physical addresses
    void *LW_virtual;          // used to map physical addresses for the light-weight bridge
 
@@ -64,26 +85,35 @@ int main(void)
    // Set virtual address pointer to I/O port
    LEDR_ptr = (unsigned int *) (LW_virtual + LEDR_BASE);
    HEX_ptr = (unsigned int *)(LW_virtual + HEX3_HEX0_BASE);
+   HEX_ptr2 = (unsigned int *)(LW_virtual + HEX5_HEX4_BASE);
 
    DataRegister dataRegister;
    dataRegister.value = 0;
 
+   DataRegister2 dataRegister2;
+   dataRegister2.value = 0;
+
    // Add 1 to the I/O register
    *LEDR_ptr = 0;
    *HEX_ptr = 0;
-   for(int x = 0; x <= 30; ++x){
-	*LEDR_ptr = *LEDR_ptr + 1;
+   while(1){
 	//test area
 	int hour1 = getHour() /10;//first digit
 	int hour2 = getHour() % 10;//second digit
 	int min1 = getMinute() / 10;
 	int min2 = getMinute() % 10;
+	int sec1 = getSecond() / 10;
+	int sec2 = getSecond() % 10;
 
-	dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(min1);
-	dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(hour1);
-	dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(min2);
-	dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(hour2);
+	dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec1);
+	dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec2);
+	dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min1);
+	dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min2);
+	dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour1);
+	dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour2);
+
 	*HEX_ptr = dataRegister.value;
+	*HEX_ptr2 = dataRegister2.value;
 	sleep(1);
    }
 
