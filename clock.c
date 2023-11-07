@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <time.h>
 #include <sys/mman.h>
 #include "./address_map_arm.h"
 #include "bcd2seven.h"
@@ -21,10 +22,29 @@ typedef union
 	{
 		unsigned int hex0:8;	//lsb
 		unsigned int hex1:8;
+		unsigned int hex2:8;
+		unsigned int hex3:8;
+
+
 	}bits;
 }DataRegister;
 
+int getHour() {
+    time_t now;
+    struct tm *timeinfo;
 
+    time(&now);
+    timeinfo = localtime(&now);
+    return timeinfo->tm_hour;
+}
+int getMinute() {
+    time_t now;
+    struct tm *timeinfo;
+
+    time(&now);
+    timeinfo = localtime(&now);
+    return timeinfo->tm_min;
+}
 
 /* This program increments the contents of the red LED parallel port */
 int main(void)
@@ -51,9 +71,18 @@ int main(void)
    // Add 1 to the I/O register
    *LEDR_ptr = 0;
    *HEX_ptr = 0;
-   for(int x = 0; x < 20; ++x){
+   for(int x = 0; x <= 30; ++x){
 	*LEDR_ptr = *LEDR_ptr + 1;
-	dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(x);
+	//test area
+	int hour1 = getHour() /10;//first digit
+	int hour2 = getHour() % 10;//second digit
+	int min1 = getMinute() / 10;
+	int min2 = getMinute() % 10;
+
+	dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(min1);
+	dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(hour1);
+	dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(min2);
+	dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(hour2);
 	*HEX_ptr = dataRegister.value;
 	sleep(1);
    }
@@ -141,4 +170,3 @@ int decimal_bcd(int decimal){
 			return 0xff;
 	}
 };
-
