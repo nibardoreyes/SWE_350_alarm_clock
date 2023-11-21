@@ -1,4 +1,11 @@
-//the integration of the increment leds with 7-segment works well
+/*
+============================================
+Name		:	Nibardo Reyes Felix
+Author		:	Me
+Version		:	2.0
+Description	:	Alarm Clock Application
+============================================
+*/
 #include "lcd/terasic_os_includes.h"
 #include "lcd/LCD_Lib.h"
 #include "lcd/lcd_graphic.h"
