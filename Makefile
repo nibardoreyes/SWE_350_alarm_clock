@@ -12,12 +12,13 @@ ARCH= arm
 
 build: $(TARGET)
 
-$(TARGET): clock.o
-	$(CC) $(LDFLAGS)   $^ -o $@ 
+$(TARGET): clock.o lcd/terasic_lib.o  \
+lcd/LCD_Lib.o lcd/LCD_Driver.o lcd/LCD_Hw.o lcd/lcd_graphic.o lcd/font.o
+	$(CC) $(LDFLAGS)   $^ -o $@   -lrt -lm
 
 %.o : %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 .PHONY: clean
 clean:
-	rm -f $(TARGET) *.a *.o *~
+	rm -f $(TARGET) *.a *.o *~ *.bmp
