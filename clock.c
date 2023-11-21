@@ -6,6 +6,7 @@ Version		:	2.0
 Description	:	Alarm Clock Application
 ============================================
 */
+
 #include "lcd/terasic_os_includes.h"
 #include "lcd/LCD_Lib.h"
 #include "lcd/lcd_graphic.h"
@@ -23,13 +24,17 @@ Description	:	Alarm Clock Application
 #include "bcd2seven.h"
 #include "clock.h"
 
+//===Defines====
 #define HW_REGS_BASE ( ALT_STM_OFST )
 #define HW_REGS_SPAN ( 0x04000000 )
-/* Prototypes for functions used to access physical memory addresses */
+//============
+//===Variables====
 int open_physical (int);
 void * map_physical (int, unsigned int, unsigned int);
 void close_physical (int);
 int unmap_physical (void *, unsigned int);
+//==================
+
 
 int main(void)
 {
@@ -58,6 +63,7 @@ int main(void)
       LEDR_ptr = (unsigned int *) (LW_virtual + LEDR_BASE);
       HEX_ptr = (unsigned int *)(LW_virtual + HEX3_HEX0_BASE);
       HEX_ptr2 = (unsigned int *)(LW_virtual + HEX5_HEX4_BASE);
+      SW_ptr = LW_virtual + SW_BASE;//switch
 
       DataRegister dataRegister;
       dataRegister.value = 0;
@@ -100,7 +106,7 @@ int main(void)
        DRAW_Clear(&LcdCanvas, LCD_WHITE);
 
    		// demo grphic api
-       DRAW_Rect(&LcdCanvas, 0,0, LcdCanvas.Width-1, LcdCanvas.Height-1, LCD_BLACK); // retangle
+       DRAW_Rect(&LcdCanvas, 0,0, LcdCanvas.Width-1, LcdCanvas.Height-1, LCD_BLACK); // rectangle
        //usleep(5* 1000000);//this code waits 5 seconds
        // clear screen
          // DRAW_Clear(&LcdCanvas, LCD_WHITE);//clears the screen of old messege
@@ -112,36 +118,64 @@ int main(void)
 
           free(LcdCanvas.pFrame);
    	}
+   	//============================================================
+   	//===Start up LCD(set 7 segments to 0) that says to set time in hours and minutes===
+   	//============================================================
+   	*LEDR_ptr = 0;
+   	*HEX_ptr = 0;
 
+   	while(1){
+   	   if(*SW_ptr == 0){
+   		dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(0);
+   		dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(0);
+   		dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(0);
+   		dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(0);
+   		dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(0);
+   		dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(0);
 
+   		*HEX_ptr = dataRegister.value;
+   		*HEX_ptr2 = dataRegister2.value;
 
+   	   }else{
 
+   		int hour1 = getHour() /10;//first digit
+   		int hour2 = getHour() % 10;//second digit
+   		int min1 = getMinute() / 10;
+   		int min2 = getMinute() % 10;
+   		int sec1 = getSecond() / 10;
+   		int sec2 = getSecond() % 10;
+   		dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec1);
+   		dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec2);
+   		dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min1);
+   		dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min2);
+   		dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour1);
+   		dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour2);
 
-
-   //============================================================
-  //===Start up LCD(set 7 segments to 0) that says to set time in hours and minutes===
-   //============================================================
-
-
-
+   		*HEX_ptr = dataRegister.value;
+   		*HEX_ptr2 = dataRegister2.value;
+   	   }
+   	   sleep(1);
+   	   }//end of while loop
    //============================================================
   //===Look at buttons to see if they are being pressed and change 7 segment(save when switch 1 is flipped===
    //============================================================
-/*
-   SW_ptr = (unsigned int *)(LW_virtual + SW_BASE);	//set virtual pointer to I/O port
-   DataRegister3 dataRegister3;
-   dataRegister3.value = 0;
-   dataRegister3.value = * (SW_ptr);//read the switch values to see which switches are flipped
-*/
 
 
-   //============================================================
-  //===Calculate other time zones for different switch orientations===
-   //============================================================
+
+//============================================================
+//===Calculate other time zones for different switch orientations===
+//============================================================
 
 
 
 
+//============================================================
+//===New LCD Message with navigation capabilities======
+//============================================================
+
+//============================================================
+//===Alarm Stuff Below======
+//============================================================
 
 
 
@@ -150,31 +184,10 @@ int main(void)
 
 
 
-   // Add 1 to the I/O register
-    *LEDR_ptr = 0;
-    *HEX_ptr = 0;
 
-   while(1){
-	//test area
-	int hour1 = getHour() /10;//first digit
-	int hour2 = getHour() % 10;//second digit
-	int min1 = getMinute() / 10;
-	int min2 = getMinute() % 10;
-	int sec1 = getSecond() / 10;
-	int sec2 = getSecond() % 10;
 
-	dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec1);
-	dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec2);
-	dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min1);
-	dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min2);
-	dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour1);
-	dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour2);
 
-	*HEX_ptr = dataRegister.value;
-	*HEX_ptr2 = dataRegister2.value;
-	sleep(1);
-   }
-
+   //=====Leave this at the end for now==========
    unmap_physical (LW_virtual, LW_BRIDGE_SPAN);   // release the physical-memory mapping
    close_physical (fd);   // close /dev/mem
    return 0;

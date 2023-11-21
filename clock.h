@@ -13,7 +13,6 @@
 #include <sys/mman.h>
 
 
-
 //First 2 unions are for the 7 segment displays
 typedef union
 {
@@ -85,6 +84,8 @@ int getSecond() {
     timeinfo = localtime(&now);
     return timeinfo->tm_sec;
 }
+
+
 
 
 
