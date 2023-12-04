@@ -41,22 +41,17 @@ typedef union
 	}bits;
 }DataRegister2;
 
-//the following union is for the switches
+
 typedef union{
 	unsigned int value;
 	struct{
-		unsigned int sw0:1;	//lsb-switch on the left
-		unsigned int sw1:1;
-		unsigned int sw2:1;
-		unsigned int sw3:1;
-		unsigned int sw4:1;
-		unsigned int sw5:1;
-		unsigned int sw6:1;
-		unsigned int sw7:1;
-		unsigned int sw8:1;
-		unsigned int sw9:1;
+		unsigned int key0:1;
+		unsigned int key1:1;
+		unsigned int key2:1;
+		unsigned int key3:1;
+
 	}bits;
-}DataRegister3;
+}PushButton;
 
 
 
@@ -84,6 +79,8 @@ int getSecond() {
     timeinfo = localtime(&now);
     return timeinfo->tm_sec;
 }
+
+
 
 
 
