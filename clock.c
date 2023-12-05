@@ -34,33 +34,56 @@ int open_physical (int);
 void * map_physical (int, unsigned int, unsigned int);
 void close_physical (int);
 int unmap_physical (void *, unsigned int);
+volatile signed int * LEDR_ptr;   // virtual address pointer to red LEDs
+volatile signed int * HEX_ptr;	//virutal address pointer to Hex Dispay
+volatile signed int * SW_ptr;	///address pointer to the switches
+volatile signed int *KEY_ptr;     // virtual address for the KEY port
 //==================
-//the following union is for the switches
-typedef union{
-	unsigned int value;
-	struct{
-		unsigned int sw0:1;	//lsb-switch on the left
-		unsigned int sw1:1;
-		unsigned int sw2:1;
-		unsigned int sw3:1;
-		unsigned int sw4:1;
-		unsigned int sw5:1;
-		unsigned int sw6:1;
-		unsigned int sw7:1;
-		unsigned int sw8:1;
-		unsigned int sw9:1;
-	}bits;
-}Switches;
+// Base address of the GPIO connected to LEDs (adjust according to your board's specifications)
+#define GPIO_LED_BASE 0xFF200000  // Example base address
+
+// Offset to control the LEDs
+#define LED_OFFSET 0x00000000     // Example offset for LED control
+
+// Structure to represent a 32-bit register
+typedef struct {
+    unsigned int data;
+} GPIO_Reg;
+
+
+void checkAlarm(int *alarmHour, int *alarmMinute, int *newHour, int *newMinute) {
+    static int ledState = 0; // State variable to toggle LEDs
+    int i;
+
+    if (*newHour  == *alarmHour && *newMinute == *alarmMinute) {
+        printf("In the alarm!\n");
+
+        // Toggle LEDs multiple times as an indicator
+        for (i = 0; i < 5; i++) {
+            // Turn all 10 LEDs on
+            *LEDR_ptr = 0x3FF; // Assuming 10 LEDs are controlled by LEDR_ptr
+
+            usleep(500000); // Sleep for 0.5 seconds
+
+            // Turn all 10 LEDs off
+            *LEDR_ptr = 0x0;
+
+            usleep(500000); // Sleep for 0.5 seconds
+        }
+        // Reset the LED state after the alarm
+        ledState = 0;
+    }
+}
+
 
 int main(void)
 {
-   volatile signed int * LEDR_ptr;   // virtual address pointer to red LEDs
-   volatile signed int * HEX_ptr;	//virutal address pointer to Hex Dispay
-   volatile signed int * SW_ptr;	///address pointer to the switches
-   volatile signed int *KEY_ptr;     // virtual address for the KEY port
+
    int fd = -1;               // used to open /dev/mem for access to physical addresses
    void *LW_virtual;          // used to map physical addresses for the light-weight bridge
    LCD_CANVAS LcdCanvas;
+   GPIO_Reg *gpio_led;
+
 
    // Open /dev/mem to give access to physical addresses
    fd = open_physical(fd);
@@ -107,7 +130,7 @@ int main(void)
    //LCD Intro Message
    //================================
    //printf("Can you see LCD?(CTRL+C to terminate this program)\r\n");
-   	printf("Graphic LCD Demo\r\n");
+   	printf("Graphic LCD Demo\n");
 
    		LcdCanvas.Width = LCD_WIDTH;
    		LcdCanvas.Height = LCD_HEIGHT;
@@ -150,6 +173,16 @@ int main(void)
    	int counter4 = 0;
    	int counter3 = 0;
    	int counter2 = 0;
+   	int alarm5 = 0;
+   	int alarm4 = 0;
+   	int alarm3 = 0;
+   	int alarm2 = 0;
+   	// Define variables outside the loop
+   	int newHour = 0;
+   	int newMinute = 0;
+   	int newSecond = 0;
+   	int alarmHour = 0;
+   	int alarmMinute = 0;
    	while(1){
    	//read first switch orientation
    	switch1.value = *SW_ptr;
@@ -178,6 +211,11 @@ int main(void)
 			 if (button.bits.key2 == 1) {
 			// Increment the counter if the button is pressed
 			counter4++;
+			if (counter5 == 2){
+				if(counter4 == 5){
+					counter4 = 0;
+				}
+			}
 			}
 			dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(counter4);
 			*HEX_ptr2 = dataRegister2.value;
@@ -191,7 +229,7 @@ int main(void)
 						}
 						dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(counter3);
 						*HEX_ptr = dataRegister.value;
-						if (counter3 == 10) {
+						if (counter3 == 6) {
 						counter3 = 0; // Reset the counter to 0 when it reaches 10
 						}
 						//display 2
@@ -207,54 +245,196 @@ int main(void)
 
    	   }
 
-
+//The switch has been flipped and time can start
    	   if (switch1.bits.sw0 == 1){
-   		int hour1 = getHour() /10;//first digit
-   		int hour2 = getHour() % 10;//second digit
-   		int min1 = getMinute() / 10;
-   		int min2 = getMinute() % 10;
-   		int sec1 = getSecond() / 10;
-   		int sec2 = getSecond() % 10;
-   		dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec1);
-   		dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec2);
-   		dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min1);
-   		dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min2);
-   		dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour1);
-   		dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour2);
+   		  int newHour0 = combineNumbers(counter5, counter4);
+   		  int newMinute0 = combineNumbers(counter3, counter2);
+   		  int newSecond0 = combineNumbers(0, 0);
 
-   		*HEX_ptr = dataRegister.value;
-   		*HEX_ptr2 = dataRegister2.value;
-   	   }
+   		  startClock(newHour0, newMinute0, newSecond0);
+   		while (1) {
+   		switch1.value = *SW_ptr;
+           newHour = getHour2();
+           newMinute = getMinute2();
+           newSecond = getSecond2();
+   		//==============================================
+   		   //clock functionality
+   		   // Check if seconds reach 60, then increment minutes
+           // Update time (for demonstration, incrementing seconds)
+           newSecond++;
+           if (newSecond >= 60) {
+               newSecond = 0;
+               newMinute++;
+               if (newMinute >= 60) {
+                   newMinute = 0;
+                   newHour++;
+                   if (newHour >= 24) {
+                       newHour = 0;
+                   }
 
+               }
+
+           }
+           setHour(newHour); // Update hours
+           setMinute(newMinute); // Update minutes
+           setSecond(newSecond); // Update seconds
+
+           // Update the 7-segment displays with the new time values
+           int hour11 = newHour / 10;
+           int hour22 = newHour % 10;
+           int min11 = newMinute / 10;
+           int min22 = newMinute % 10;
+           int sec11 = newSecond / 10;
+           int sec22 = newSecond % 10;
+
+           // Assuming dataRegister and dataRegister2 are used for the 7-segment displays
+           dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec11);
+           dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec22);
+           dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min11);
+           dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min22);
+           dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour11);
+           dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour22);
+
+           *HEX_ptr = dataRegister.value; // Update the 7-segment display 1
+           *HEX_ptr2 = dataRegister2.value; // Update the 7-segment display 2
+
+   		//====Time Variables===
+   			   	//PACIFIC TIME
+   			   	int hour1 = newHour /10;//first digit
+   			   	int hour2 = newHour % 10;//second digit
+
+   			   	//EASTER TIME
+   			   	int hour1e = ((newHour + 3) % 24) /10;//first digit
+   			   	int hour2e = ((newHour + 3) % 24) % 10;//second digit
+   			   	//ATLANTIC TIME
+   			   	int hour1a = ((newHour - 4 + 24) % 24) / 10;
+   			   	int hour2a= ((newHour - 4 + 24) % 24) % 10 ;
+   			   	//CENTRAL TIME
+   			   	int hour1c = ((newHour + 2) % 24) / 10;
+   			   	int hour2c =((newHour + 2) % 24) % 10;
+   			   	//minute and seconds are the same
+   		   	   	int min1 = newMinute / 10;
+   		   	   	int min2 = newMinute % 10;
+   		   	   	int sec1 = newSecond / 10;
+   		   	   	int sec2 = newSecond % 10;
+
+   		 //======Pacific Time set by user
+   		        	dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec1);
+   		   	   		dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec2);
+   		   	   		dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min1);
+   		   	   		dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min2);
+   		   	   		dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour1);
+   		   	   		dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour2);
+   		   	   		*HEX_ptr = dataRegister.value;
+   		   	   		*HEX_ptr2 = dataRegister2.value;
+   		   	  //Eastern time
+   		   	     	   if (switch1.bits.sw0 == 1 && switch1.bits.sw1 == 1){
+   		   	     		dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec1);
+   		   	     		dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec2);
+   		   	     		dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min1);
+   		   	     		dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min2);
+   		   	     		dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour1e);
+   		   	     		dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour2e);
+   		   	     		*HEX_ptr = dataRegister.value;
+   		   	     		*HEX_ptr2 = dataRegister2.value;
+   		   	     	   }
+   		   	     	   //Atlantic time
+   		   	     	   if (switch1.bits.sw0 == 1 && switch1.bits.sw2 == 1){
+   		   	     		dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec1);
+   		   	     		dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec2);
+   		   	     		dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min1);
+   		   	     		dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min2);
+   		   	     		dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour1a);
+   		   	     		dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour2a);
+   		   	     		*HEX_ptr = dataRegister.value;
+   		   	     		*HEX_ptr2 = dataRegister2.value;
+   		   	     	   }
+   		   	     	   //Central time
+   		   	     	   if (switch1.bits.sw0 == 1 && switch1.bits.sw3 == 1){
+   		   	     		dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec1);
+   		   	     		dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec2);
+   		   	     		dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min1);
+   		   	     		dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min2);
+   		   	     		dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour1c);
+   		   	     		dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour2c);
+   		   	     		*HEX_ptr = dataRegister.value;
+   		   	     		*HEX_ptr2 = dataRegister2.value;
+
+   		}
+
+   			   	     //=====ALARM==
+   		   		//read first switch orientation
+   		   		   	switch1.value = *SW_ptr;
+   			   	        	if (switch1.bits.sw9 == 1){
+   			   	        	dataRegister2.value = *HEX_ptr2;
+   			   	        	dataRegister.value = *HEX_ptr;
+   			   	        	//allow user to set an alarm for pacific time zone
+   			   	         dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(0);
+   			   	         dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(0);
+   			   	         dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(0);
+   			   	         dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(0);
+   			   	         dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(0);
+   			   	         dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(0);
+   			   	        	*HEX_ptr = dataRegister.value;
+   			   	        	*HEX_ptr2 = dataRegister2.value;
+   			   	        	//allow buttons to be pressed
+   			   	        	button.value = *KEY_ptr;
+   			   	        	   		        if (button.bits.key3 == 1) {
+   			   	        	   		            // Increment the counter if the button is pressed
+   			   	        	   		            alarm5++;
+   			   	        	   		        }
+   			   	        	   		         dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(alarm5);
+   			   	        	   		      *HEX_ptr2 = dataRegister2.value;
+   			   	        	   		            if (alarm5 == 3) {
+   			   	        	   		                alarm5 = 0; // Reset the counter to 0 when it reaches 10
+   			   	        	   		            }
+   			   	        	   		            //display 4
+   			   	        				 if (button.bits.key2 == 1) {
+   			   	        				// Increment the counter if the button is pressed
+   			   	        				alarm4++;
+   			   	        				}
+   			   	        				dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(alarm4);
+   			   	        				*HEX_ptr2 = dataRegister2.value;
+   			   	        				if (alarm4 == 10) {
+   			   	        				alarm4 = 0; // Reset the counter to 0 when it reaches 10
+   			   	        				}
+   			   	        				//display 3
+   			   	        							 if (button.bits.key1 == 1) {
+   			   	        							// Increment the counter if the button is pressed
+   			   	        							alarm3++;
+   			   	        							}
+   			   	        							dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(alarm3);
+   			   	        							*HEX_ptr = dataRegister.value;
+   			   	        							if (alarm3 == 6) {
+   			   	        							alarm3 = 0; // Reset the counter to 0 when it reaches 10
+   			   	        							}
+   			   	        							//display 2
+   			   	        										 if (button.bits.key0 == 1) {
+   			   	        										// Increment the counter if the button is pressed
+   			   	        										alarm2++;
+   			   	        										}
+   			   	        										dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(alarm2);
+   			   	        										*HEX_ptr = dataRegister.value;
+   			   	        										if (alarm2 == 10) {
+   			   	        										alarm2 = 0; // Reset the counter to 0 when it reaches 10
+
+   			   	        										}
+
+   		usleep(1000000); // Sleep for 1 second (1000000 microseconds)
+   		}//inner while loop
+   			   	      // Check if the current time matches the alarm time
+   			   	      if (switch1.bits.sw8 == 1){
+   			   	      	alarmHour = combineNumbers(alarm5, alarm4);
+   			   	        alarmMinute = combineNumbers(alarm3, alarm2);
+   			   	        checkAlarm(&alarmHour, &alarmMinute, &newHour, &newMinute);
+   			   	      printf("%d, %d, %d, %d\n", newHour, newMinute, alarmHour, alarmMinute);
+   			   	      }
+   		}
+
+   	}
 
    	   sleep(1);
-   	   }//end of while loop
-   //============================================================
-  //===Look at buttons to see if they are being pressed and change 7 segment(save when switch 1 is flipped===
-   //============================================================
-
-
-
-//============================================================
-//===Calculate other time zones for different switch orientations===
-//============================================================
-
-
-
-
-//============================================================
-//===New LCD Message with navigation capabilities======
-//============================================================
-
-//============================================================
-//===Alarm Stuff Below======
-//============================================================
-
-
-
-
-
-
+   	   }//end of main while loop
 
 
    //=====Leave this at the end for now==========
