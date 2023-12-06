@@ -2,7 +2,7 @@
 ============================================
 Name		:	Nibardo Reyes Felix
 Author		:	Me
-Version		:	2.0
+Version		:	4.0
 Description	:	Alarm Clock Application
 ============================================
 */
@@ -24,7 +24,6 @@ Description	:	Alarm Clock Application
 #include "bcd2seven.h"
 #include "clock.h"
 
-volatile signed int *HEX_ptr2; // Global definition of HEX_ptr2
 //===Defines====
 #define HW_REGS_BASE ( ALT_STM_OFST )
 #define HW_REGS_SPAN ( 0x04000000 )
@@ -34,10 +33,15 @@ int open_physical (int);
 void * map_physical (int, unsigned int, unsigned int);
 void close_physical (int);
 int unmap_physical (void *, unsigned int);
-volatile signed int * LEDR_ptr;   // virtual address pointer to red LEDs
+void *virtual_base;
 volatile signed int * HEX_ptr;	//virutal address pointer to Hex Dispay
+volatile signed int *HEX_ptr2; // Global definition of HEX_ptr2
 volatile signed int * SW_ptr;	///address pointer to the switches
 volatile signed int *KEY_ptr;     // virtual address for the KEY port
+LCD_CANVAS LcdCanvas;
+DataRegister dataRegister;
+DataRegister2 dataRegister2;
+
 //==================
 // Base address of the GPIO connected to LEDs (adjust according to your board's specifications)
 #define GPIO_LED_BASE 0xFF200000  // Example base address
@@ -45,11 +49,34 @@ volatile signed int *KEY_ptr;     // virtual address for the KEY port
 // Offset to control the LEDs
 #define LED_OFFSET 0x00000000     // Example offset for LED control
 
-// Structure to represent a 32-bit register
-typedef struct {
-    unsigned int data;
-} GPIO_Reg;
+void displayMessageOnLCD(char* line1, char* line2, char* line3, char* line4) {
+    // Create and initialize the LCD canvas
+    LCD_CANVAS LcdCanvas;
+    LcdCanvas.Width = LCD_WIDTH;
+    LcdCanvas.Height = LCD_HEIGHT;
+    LcdCanvas.BitPerPixel = 1;
+    LcdCanvas.FrameSize = LcdCanvas.Width * LcdCanvas.Height / 8;
+    LcdCanvas.pFrame = (void *)malloc(LcdCanvas.FrameSize);
 
+    // Initialize LCD hardware
+    LCDHW_Init(virtual_base);
+    LCDHW_BackLight(true);
+
+    LCD_Init();
+    DRAW_Clear(&LcdCanvas, LCD_WHITE);
+    DRAW_Rect(&LcdCanvas, 0, 0, LcdCanvas.Width - 1, LcdCanvas.Height - 1, LCD_BLACK);
+
+        // Print the message on the LCD canvas
+        DRAW_PrintString(&LcdCanvas, 5, 2, line1, LCD_BLACK, &font_16x16);
+        DRAW_PrintString(&LcdCanvas, 5, 2+12, line2, LCD_BLACK, &font_16x16);
+        DRAW_PrintString(&LcdCanvas, 5, 2+24, line3, LCD_BLACK, &font_16x16);
+        DRAW_PrintString(&LcdCanvas, 5, 2+36, line4, LCD_BLACK, &font_16x16);
+        DRAW_Refresh(&LcdCanvas);
+
+        free(LcdCanvas.pFrame);
+return;
+
+}
 
 void checkAlarm(int *alarmHour, int *alarmMinute, int *newHour, int *newMinute) {
     static int ledState = 0; // State variable to toggle LEDs
@@ -75,14 +102,35 @@ void checkAlarm(int *alarmHour, int *alarmMinute, int *newHour, int *newMinute) 
     }
 }
 
+void updateDisplay(int hour, int minute, int second) {
+    // Convert time values to their respective BCD representations for the display
+    int hour10 = hour / 10;
+    int hour1 = hour % 10;
+    int minute10 = minute / 10;
+    int minute1 = minute % 10;
+    int second10 = second / 10;
+    int second1 = second % 10;
 
+    // Set the BCD values to the display registers
+    dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour10);
+    dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour1);
+    dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(minute10);
+    dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(minute1);
+    dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(second10);
+    dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(second1);
+
+    // Update the 7-segment displays
+    *HEX_ptr = dataRegister.value;
+    *HEX_ptr2 = dataRegister2.value;
+}
+//==============================
+//=======MAIN==================
+//=============================
 int main(void)
 {
 
    int fd = -1;               // used to open /dev/mem for access to physical addresses
    void *LW_virtual;          // used to map physical addresses for the light-weight bridge
-   LCD_CANVAS LcdCanvas;
-   GPIO_Reg *gpio_led;
 
 
    // Open /dev/mem to give access to physical addresses
@@ -107,9 +155,7 @@ int main(void)
 
 
       //Registers=============
-      DataRegister dataRegister;
       dataRegister.value = 0;
-      DataRegister2 dataRegister2;
       dataRegister2.value = 0;
 
       PushButton button;
@@ -121,7 +167,6 @@ int main(void)
 ///==============================
 
 //======LCD Stuff========
-  	void *virtual_base;
   	virtual_base = mmap( NULL, HW_REGS_SPAN, ( PROT_READ | PROT_WRITE ), MAP_SHARED, fd, HW_REGS_BASE );
 
 //========================
@@ -130,40 +175,10 @@ int main(void)
    //LCD Intro Message
    //================================
    //printf("Can you see LCD?(CTRL+C to terminate this program)\r\n");
-   	printf("Graphic LCD Demo\n");
+   	printf("===Clock Program===\n");
 
-   		LcdCanvas.Width = LCD_WIDTH;
-   		LcdCanvas.Height = LCD_HEIGHT;
-   		LcdCanvas.BitPerPixel = 1;
-   		LcdCanvas.FrameSize = LcdCanvas.Width * LcdCanvas.Height / 8;
-   		LcdCanvas.pFrame = (void *)malloc(LcdCanvas.FrameSize);
+    displayMessageOnLCD("Use Buttons To", "Set PT Then", "Flip SW0 to", "save it");
 
-   	if (LcdCanvas.pFrame == NULL){
-   			printf("failed to allocate lcd frame buffer\r\n");
-   	}else{
-
-
-   		LCDHW_Init(virtual_base);
-   		LCDHW_BackLight(true); // turn on LCD backlight
-
-       LCD_Init();
-       // initialize the pio controller
-      // clear screen
-       DRAW_Clear(&LcdCanvas, LCD_WHITE);
-
-   		// demo grphic api
-       DRAW_Rect(&LcdCanvas, 0,0, LcdCanvas.Width-1, LcdCanvas.Height-1, LCD_BLACK); // rectangle
-       //usleep(5* 1000000);//this code waits 5 seconds
-       // clear screen
-         // DRAW_Clear(&LcdCanvas, LCD_WHITE);//clears the screen of old messege
-          DRAW_PrintString(&LcdCanvas, 30, 5, "Use Buttons", LCD_BLACK, &font_16x16);
-          DRAW_PrintString(&LcdCanvas, 30, 5+16, "To Set", LCD_BLACK, &font_16x16);
-          DRAW_PrintString(&LcdCanvas, 30, 5+32, "The Clock", LCD_BLACK, &font_16x16);
-          DRAW_Refresh(&LcdCanvas);
-
-
-          free(LcdCanvas.pFrame);
-   	}
    	//============================================================
    	//===Start up LCD(set 7 segments to 0) that says to set time in hours and minutes===
    	//============================================================
@@ -183,18 +198,18 @@ int main(void)
    	int newSecond = 0;
    	int alarmHour = 0;
    	int alarmMinute = 0;
+   	//Flags for lcd
+   	int flagP = 0;
+   	int flagE = 0; // Set the flag to 0 initially
+   	int flagA = 0;
+   	int flagC = 0;
+   	int flagAlarm = 0;
+   	int flagNoSwitches = 0;
    	while(1){
    	//read first switch orientation
    	switch1.value = *SW_ptr;
    	   if(switch1.bits.sw0 == 0){
-   		dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(0);
-   		dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(0);
-   		dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(0);
-   		dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(0);
-   		dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(0);
-   		dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(0);
-   		*HEX_ptr = dataRegister.value;
-   		*HEX_ptr2 = dataRegister2.value;
+   		updateDisplay(0, 0, 0);
    		//====Setting up clock=====
    		//display 5
    		button.value = *KEY_ptr;
@@ -247,13 +262,13 @@ int main(void)
 
 //The switch has been flipped and time can start
    	   if (switch1.bits.sw0 == 1){
+	     displayMessageOnLCD("Sw1=PT, Sw2=ET", "Sw3=AT, Sw4=CT", "Sw9=setAlarm", "Sw8=activateAlarm");
    		  int newHour0 = combineNumbers(counter5, counter4);
    		  int newMinute0 = combineNumbers(counter3, counter2);
    		  int newSecond0 = combineNumbers(0, 0);
-
    		  startClock(newHour0, newMinute0, newSecond0);
    		while (1) {
-   		switch1.value = *SW_ptr;
+   	   	switch1.value = *SW_ptr;
            newHour = getHour2();
            newMinute = getMinute2();
            newSecond = getSecond2();
@@ -278,105 +293,85 @@ int main(void)
            setHour(newHour); // Update hours
            setMinute(newMinute); // Update minutes
            setSecond(newSecond); // Update seconds
-
-           // Update the 7-segment displays with the new time values
-           int hour11 = newHour / 10;
-           int hour22 = newHour % 10;
-           int min11 = newMinute / 10;
-           int min22 = newMinute % 10;
-           int sec11 = newSecond / 10;
-           int sec22 = newSecond % 10;
-
-           // Assuming dataRegister and dataRegister2 are used for the 7-segment displays
-           dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec11);
-           dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec22);
-           dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min11);
-           dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min22);
-           dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour11);
-           dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour22);
-
-           *HEX_ptr = dataRegister.value; // Update the 7-segment display 1
-           *HEX_ptr2 = dataRegister2.value; // Update the 7-segment display 2
+           //then we display it like a clock
+           //updateDisplay(newHour, newMinute, newSecond);
 
    		//====Time Variables===
-   			   	//PACIFIC TIME
-   			   	int hour1 = newHour /10;//first digit
-   			   	int hour2 = newHour % 10;//second digit
+           //EASTER TIME
+            int hour1e = ((newHour + 3) % 24) ;
+            //ATLANTIC TIME
+           int hour1a = ((newHour - 4 + 24) % 24);
+        	//CENTRAL TIME
+            int hour1c = ((newHour + 2) % 24);
 
-   			   	//EASTER TIME
-   			   	int hour1e = ((newHour + 3) % 24) /10;//first digit
-   			   	int hour2e = ((newHour + 3) % 24) % 10;//second digit
-   			   	//ATLANTIC TIME
-   			   	int hour1a = ((newHour - 4 + 24) % 24) / 10;
-   			   	int hour2a= ((newHour - 4 + 24) % 24) % 10 ;
-   			   	//CENTRAL TIME
-   			   	int hour1c = ((newHour + 2) % 24) / 10;
-   			   	int hour2c =((newHour + 2) % 24) % 10;
-   			   	//minute and seconds are the same
-   		   	   	int min1 = newMinute / 10;
-   		   	   	int min2 = newMinute % 10;
-   		   	   	int sec1 = newSecond / 10;
-   		   	   	int sec2 = newSecond % 10;
+  		   	     //======Pacific Time set by user
+  		   	     	   	     	   if (switch1.bits.sw1 == 1 && switch1.bits.sw9 != 1){
+  		   	     	   	     		 if (flagP != 1){
+  		   	     	   	     		displayMessageOnLCD("Displaying:", "Pacific Time", "Flip Sw1-4", "Only 1 Sw up");
+  		   	     	   	     		 }
+  		   	     	   	     		 updateDisplay(newHour, newMinute, newSecond);
+  		   	     	   	     		 flagP = 1;
+  		   	     		   	     	   }else if(switch1.bits.sw1 == 0){
+  		   	     		   	     		   flagP = 0;
+  		   	     		   	     	   }
 
-   		 //======Pacific Time set by user
-   		        	dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec1);
-   		   	   		dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec2);
-   		   	   		dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min1);
-   		   	   		dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min2);
-   		   	   		dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour1);
-   		   	   		dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour2);
-   		   	   		*HEX_ptr = dataRegister.value;
-   		   	   		*HEX_ptr2 = dataRegister2.value;
-   		   	  //Eastern time
-   		   	     	   if (switch1.bits.sw0 == 1 && switch1.bits.sw1 == 1){
-   		   	     		dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec1);
-   		   	     		dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec2);
-   		   	     		dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min1);
-   		   	     		dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min2);
-   		   	     		dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour1e);
-   		   	     		dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour2e);
-   		   	     		*HEX_ptr = dataRegister.value;
-   		   	     		*HEX_ptr2 = dataRegister2.value;
+
+//Eastern time
+   		   	     	   if (switch1.bits.sw2 == 1 && switch1.bits.sw9 != 1){
+   		   	     		 if (flagE != 1){
+   		   	     		displayMessageOnLCD("Displaying:", "Eastern Time", "Flip Sw1-4", "Only 1 Sw up");
+   		   	     		 }
+   		   	     		updateDisplay(hour1e, newMinute, newSecond);
+   		   	     		flagE = 1;
+   		   	     	   }else if(switch1.bits.sw2 == 0){
+   		   	     		   flagE = 0;
    		   	     	   }
+
+
    		   	     	   //Atlantic time
-   		   	     	   if (switch1.bits.sw0 == 1 && switch1.bits.sw2 == 1){
-   		   	     		dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec1);
-   		   	     		dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec2);
-   		   	     		dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min1);
-   		   	     		dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min2);
-   		   	     		dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour1a);
-   		   	     		dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour2a);
-   		   	     		*HEX_ptr = dataRegister.value;
-   		   	     		*HEX_ptr2 = dataRegister2.value;
+   		   	     	   if (switch1.bits.sw3 == 1 && switch1.bits.sw9 != 1){
+     		   	     		 if (flagA != 1){
+     		   	     		displayMessageOnLCD("Displaying:", "Atlantic Time", "Flip Sw1-4", "Only 1 Sw up");
+     		   	     		 }
+
+   		   	     		updateDisplay(hour1a, newMinute, newSecond);
+   		   	     		flagA = 1;
+   	   		   	     	   }else if(switch1.bits.sw3 == 0){
+   	   		   	     		   flagA = 0;
    		   	     	   }
    		   	     	   //Central time
-   		   	     	   if (switch1.bits.sw0 == 1 && switch1.bits.sw3 == 1){
-   		   	     		dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(sec1);
-   		   	     		dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(sec2);
-   		   	     		dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(min1);
-   		   	     		dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(min2);
-   		   	     		dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour1c);
-   		   	     		dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour2c);
-   		   	     		*HEX_ptr = dataRegister.value;
-   		   	     		*HEX_ptr2 = dataRegister2.value;
+   		   	     	   if (switch1.bits.sw4 == 1 && switch1.bits.sw9 != 1){
+   		   	     		 if (flagC != 1){
+   		   	     		displayMessageOnLCD("Displaying:", "Central Time", "Flip Sw1-4", "Only 1 Sw up");
+   		   	     		 }
+
+   		   	     		updateDisplay(hour1c, newMinute, newSecond);
+   		   	     		flagC = 1;
+   	   		   	     	   }else if(switch1.bits.sw4 == 0){
+   	   		   	     		   flagC = 0;
 
    		}
+   		   			if(switch1.bits.sw1 == 0 && switch1.bits.sw2 != 1 && switch1.bits.sw3 != 1 && switch1.bits.sw4 != 1 && switch1.bits.sw9 != 1){
+ 		   	     		 if (flagNoSwitches != 1){
+  		   	     		displayMessageOnLCD("Sw1=PT, Sw2=ET", "Sw3=AT, Sw4=CT", "Sw9=setAlarm", "Sw8=activateAlarm");
+  		   	     		 }
+   		   				updateDisplay(0, 0, 0);
+   		   				flagNoSwitches = 1;
+   		   			}else if(switch1.bits.sw1 == 1 ||  switch1.bits.sw2 == 1 || switch1.bits.sw3 == 1 || switch1.bits.sw4 == 1 || switch1.bits.sw9 == 1){
+   		   	     		   flagNoSwitches = 0;
+	}
 
-   			   	     //=====ALARM==
+   			   	 //=====ALARM==
    		   		//read first switch orientation
    		   		   	switch1.value = *SW_ptr;
    			   	        	if (switch1.bits.sw9 == 1){
    			   	        	dataRegister2.value = *HEX_ptr2;
    			   	        	dataRegister.value = *HEX_ptr;
    			   	        	//allow user to set an alarm for pacific time zone
-   			   	         dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(0);
-   			   	         dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(0);
-   			   	         dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(0);
-   			   	         dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(0);
-   			   	         dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(0);
-   			   	         dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(0);
-   			   	        	*HEX_ptr = dataRegister.value;
-   			   	        	*HEX_ptr2 = dataRegister2.value;
+   			   	         updateDisplay(0, 0, 0);
+   			   	   if (flagAlarm != 1){
+   			   	    		 displayMessageOnLCD("Make Alarm for", "Pacific Time", "Flip Sw8 to", "set it ");
+   			   	    		   	     	   	     		 }
    			   	        	//allow buttons to be pressed
    			   	        	button.value = *KEY_ptr;
    			   	        	   		        if (button.bits.key3 == 1) {
@@ -392,6 +387,11 @@ int main(void)
    			   	        				 if (button.bits.key2 == 1) {
    			   	        				// Increment the counter if the button is pressed
    			   	        				alarm4++;
+   			   	      			if (alarm5 == 2){
+   			   	      				if(alarm4 == 5){
+   			   	      					alarm4 = 0;
+   			   	      				}
+   			   	      			}
    			   	        				}
    			   	        				dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(alarm4);
    			   	        				*HEX_ptr2 = dataRegister2.value;
@@ -420,21 +420,25 @@ int main(void)
 
    			   	        										}
 
-   		usleep(1000000); // Sleep for 1 second (1000000 microseconds)
-   		}//inner while loop
+flagAlarm = 1;
+usleep(5 * 100000);
+
+   			   	        	}else if(switch1.bits.sw9 == 0){
+    	   		   	     		   flagAlarm = 0;
+   			   	        	}
+
    			   	      // Check if the current time matches the alarm time
    			   	      if (switch1.bits.sw8 == 1){
    			   	      	alarmHour = combineNumbers(alarm5, alarm4);
    			   	        alarmMinute = combineNumbers(alarm3, alarm2);
    			   	        checkAlarm(&alarmHour, &alarmMinute, &newHour, &newMinute);
-   			   	      printf("%d, %d, %d, %d\n", newHour, newMinute, alarmHour, alarmMinute);
+   			   	      printf("PT Hours:%d:%d vs. Alarm Set:%d:%d\n", newHour, newMinute, alarmHour, alarmMinute);
    			   	      }
    		}
-
-   	}
-
+   	   }
    	   sleep(1);
    	   }//end of main while loop
+
 
 
    //=====Leave this at the end for now==========
