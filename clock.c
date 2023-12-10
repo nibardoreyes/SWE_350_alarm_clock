@@ -38,17 +38,13 @@ volatile signed int * HEX_ptr;	//virutal address pointer to Hex Dispay
 volatile signed int *HEX_ptr2; // Global definition of HEX_ptr2
 volatile signed int * SW_ptr;	///address pointer to the switches
 volatile signed int *KEY_ptr;     // virtual address for the KEY port
+volatile unsigned int *JP1_ptr;
 LCD_CANVAS LcdCanvas;
 DataRegister dataRegister;
 DataRegister2 dataRegister2;
+GpioRegister gpioRegister1;
 
-//==================
-// Base address of the GPIO connected to LEDs (adjust according to your board's specifications)
-#define GPIO_LED_BASE 0xFF200000  // Example base address
-
-// Offset to control the LEDs
-#define LED_OFFSET 0x00000000     // Example offset for LED control
-
+//Function
 void displayMessageOnLCD(char* line1, char* line2, char* line3, char* line4) {
     // Create and initialize the LCD canvas
     LCD_CANVAS LcdCanvas;
@@ -79,26 +75,20 @@ return;
 }
 
 void checkAlarm(int *alarmHour, int *alarmMinute, int *newHour, int *newMinute) {
-    static int ledState = 0; // State variable to toggle LEDs
-    int i;
-
     if (*newHour  == *alarmHour && *newMinute == *alarmMinute) {
-        printf("In the alarm!\n");
+        // Turn all 10 LEDs on
+        *LEDR_ptr = 0x3FF; // Assuming 10 LEDs are controlled by LEDR_ptr
+        usleep(250000); // Sleep for 0.5 seconds
 
-        // Toggle LEDs multiple times as an indicator
-        for (i = 0; i < 5; i++) {
-            // Turn all 10 LEDs on
-            *LEDR_ptr = 0x3FF; // Assuming 10 LEDs are controlled by LEDR_ptr
+        // Turn all 10 LEDs off
+        *LEDR_ptr = 0x0;
+        usleep(500000); // Sleep for another 0.5 seconds
 
-            usleep(500000); // Sleep for 0.5 seconds
+        // Repeat the on-off cycle
+        *LEDR_ptr = 0x3FF; // Turn all LEDs on again
+        usleep(240000); // Sleep for 0.5 seconds
 
-            // Turn all 10 LEDs off
-            *LEDR_ptr = 0x0;
-
-            usleep(500000); // Sleep for 0.5 seconds
-        }
-        // Reset the LED state after the alarm
-        ledState = 0;
+        *LEDR_ptr = 0x0; // Turn all LEDs off again
     }
 }
 
@@ -112,17 +102,19 @@ void updateDisplay(int hour, int minute, int second) {
     int second1 = second % 10;
 
     // Set the BCD values to the display registers
-    dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(hour10);
-    dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(hour1);
-    dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(minute10);
-    dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(minute1);
-    dataRegister.bits.hex1 = bcd2sevenSegmentDecoder(second10);
-    dataRegister.bits.hex0 = bcd2sevenSegmentDecoder(second1);
+    gpioRegister1.bits.gpio5 = hour10;
+    gpioRegister1.bits.gpio4 = hour1;
+    gpioRegister1.bits.gpio3 = minute10;
+    gpioRegister1.bits.gpio2 = minute1;
+    gpioRegister1.bits.gpio1 = second10;
+    gpioRegister1.bits.gpio0 = second1;
 
     // Update the 7-segment displays
-    *HEX_ptr = dataRegister.value;
-    *HEX_ptr2 = dataRegister2.value;
+    *JP1_ptr = gpioRegister1.value;
+
 }
+
+
 //==============================
 //=======MAIN==================
 //=============================
@@ -152,16 +144,22 @@ int main(void)
       HEX_ptr2 = (signed int *)(LW_virtual + HEX5_HEX4_BASE);
       SW_ptr = (signed int *)(LW_virtual + SW_BASE);//switch
       KEY_ptr =(signed int *)( LW_virtual + KEY_BASE);    // in it virtual address for KEY port
+      JP1_ptr = (unsigned int *)( LW_virtual + JP1_BASE);
+
 
 
       //Registers=============
-      dataRegister.value = 0;
-      dataRegister2.value = 0;
+     // dataRegister.value = 0;
+     // dataRegister2.value = 0;
 
       PushButton button;
       button.value = 0;
       Switches switch1;
       switch1.value = 0;
+
+      //*(JP1_ptr+ 1) = 0x00FFFFFF;
+      //gpioRegister = (GpioRegister*)(JP1_ptr + 0);
+
 
 
 ///==============================
@@ -170,6 +168,9 @@ int main(void)
   	virtual_base = mmap( NULL, HW_REGS_SPAN, ( PROT_READ | PROT_WRITE ), MAP_SHARED, fd, HW_REGS_BASE );
 
 //========================
+
+
+  	 gpioRegister1 = (GpioRegister)(*JP1_ptr);
 
    //===========================================
    //LCD Intro Message
@@ -209,7 +210,7 @@ int main(void)
    	//read first switch orientation
    	switch1.value = *SW_ptr;
    	   if(switch1.bits.sw0 == 0){
-   		updateDisplay(0, 0, 0);
+   		updateDisplay(00, 00, 00);
    		//====Setting up clock=====
    		//display 5
    		button.value = *KEY_ptr;
@@ -217,8 +218,8 @@ int main(void)
    		            // Increment the counter if the button is pressed
    		            counter5++;
    		        }
-   		         dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(counter5);
-   		      *HEX_ptr2 = dataRegister2.value;
+   		     gpioRegister1.bits.gpio5 = counter5;
+   		  *JP1_ptr = gpioRegister1.value;
    		            if (counter5 == 3) {
    		                counter5 = 0; // Reset the counter to 0 when it reaches 10
    		            }
@@ -232,8 +233,9 @@ int main(void)
 				}
 			}
 			}
-			dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(counter4);
-			*HEX_ptr2 = dataRegister2.value;
+			 gpioRegister1.bits.gpio4 = counter4;
+			 *JP1_ptr = gpioRegister1.value;
+
 			if (counter4 == 10) {
 			counter4 = 0; // Reset the counter to 0 when it reaches 10
 			}
@@ -242,8 +244,9 @@ int main(void)
 						// Increment the counter if the button is pressed
 						counter3++;
 						}
-						dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(counter3);
-						*HEX_ptr = dataRegister.value;
+						 gpioRegister1.bits.gpio3 = counter3;
+						 *JP1_ptr = gpioRegister1.value;
+
 						if (counter3 == 6) {
 						counter3 = 0; // Reset the counter to 0 when it reaches 10
 						}
@@ -252,8 +255,8 @@ int main(void)
 									// Increment the counter if the button is pressed
 									counter2++;
 									}
-									dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(counter2);
-									*HEX_ptr = dataRegister.value;
+									 gpioRegister1.bits.gpio2 = counter2;
+									 *JP1_ptr = gpioRegister1.value;
 									if (counter2 == 10) {
 									counter2 = 0; // Reset the counter to 0 when it reaches 10
 									}
@@ -267,6 +270,7 @@ int main(void)
    		  int newMinute0 = combineNumbers(counter3, counter2);
    		  int newSecond0 = combineNumbers(0, 0);
    		  startClock(newHour0, newMinute0, newSecond0);
+
    		while (1) {
    	   	switch1.value = *SW_ptr;
            newHour = getHour2();
@@ -368,7 +372,7 @@ int main(void)
    			   	        	dataRegister2.value = *HEX_ptr2;
    			   	        	dataRegister.value = *HEX_ptr;
    			   	        	//allow user to set an alarm for pacific time zone
-   			   	         updateDisplay(0, 0, 0);
+   			   	         updateDisplay(00, 00, 00);
    			   	   if (flagAlarm != 1){
    			   	    		 displayMessageOnLCD("Make Alarm for", "Pacific Time", "Flip Sw8 to", "set it ");
    			   	    		   	     	   	     		 }
@@ -378,8 +382,8 @@ int main(void)
    			   	        	   		            // Increment the counter if the button is pressed
    			   	        	   		            alarm5++;
    			   	        	   		        }
-   			   	        	   		         dataRegister2.bits.hex5 = bcd2sevenSegmentDecoder(alarm5);
-   			   	        	   		      *HEX_ptr2 = dataRegister2.value;
+   			   	        	   		gpioRegister1.bits.gpio5 = alarm5;
+   			   	        	   	    *JP1_ptr = gpioRegister1.value;
    			   	        	   		            if (alarm5 == 3) {
    			   	        	   		                alarm5 = 0; // Reset the counter to 0 when it reaches 10
    			   	        	   		            }
@@ -393,8 +397,8 @@ int main(void)
    			   	      				}
    			   	      			}
    			   	        				}
-   			   	        				dataRegister2.bits.hex4 = bcd2sevenSegmentDecoder(alarm4);
-   			   	        				*HEX_ptr2 = dataRegister2.value;
+   			   	        			gpioRegister1.bits.gpio4 = alarm4;
+   			   	        			*JP1_ptr = gpioRegister1.value;
    			   	        				if (alarm4 == 10) {
    			   	        				alarm4 = 0; // Reset the counter to 0 when it reaches 10
    			   	        				}
@@ -403,8 +407,8 @@ int main(void)
    			   	        							// Increment the counter if the button is pressed
    			   	        							alarm3++;
    			   	        							}
-   			   	        							dataRegister.bits.hex3 = bcd2sevenSegmentDecoder(alarm3);
-   			   	        							*HEX_ptr = dataRegister.value;
+   			   	        						gpioRegister1.bits.gpio3 = alarm3;
+   			   	        						*JP1_ptr = gpioRegister1.value;
    			   	        							if (alarm3 == 6) {
    			   	        							alarm3 = 0; // Reset the counter to 0 when it reaches 10
    			   	        							}
@@ -413,15 +417,15 @@ int main(void)
    			   	        										// Increment the counter if the button is pressed
    			   	        										alarm2++;
    			   	        										}
-   			   	        										dataRegister.bits.hex2 = bcd2sevenSegmentDecoder(alarm2);
-   			   	        										*HEX_ptr = dataRegister.value;
+   			   	        									gpioRegister1.bits.gpio2 = alarm2;
+   			   	        									*JP1_ptr = gpioRegister1.value;
    			   	        										if (alarm2 == 10) {
    			   	        										alarm2 = 0; // Reset the counter to 0 when it reaches 10
 
    			   	        										}
 
 flagAlarm = 1;
-usleep(5 * 100000);
+usleep(400000);
 
    			   	        	}else if(switch1.bits.sw9 == 0){
     	   		   	     		   flagAlarm = 0;
@@ -432,14 +436,11 @@ usleep(5 * 100000);
    			   	      	alarmHour = combineNumbers(alarm5, alarm4);
    			   	        alarmMinute = combineNumbers(alarm3, alarm2);
    			   	        checkAlarm(&alarmHour, &alarmMinute, &newHour, &newMinute);
-   			   	      printf("PT Hours:%d:%d vs. Alarm Set:%d:%d\n", newHour, newMinute, alarmHour, alarmMinute);
-   			   	      }
+   			   	       }
    		}
    	   }
-   	   sleep(1);
+   	   usleep(400000);
    	   }//end of main while loop
-
-
 
    //=====Leave this at the end for now==========
    unmap_physical (LW_virtual, LW_BRIDGE_SPAN);   // release the physical-memory mapping
@@ -447,6 +448,7 @@ usleep(5 * 100000);
    return 0;
 }
 
+//=========================================================================
 // Open /dev/mem, if not already done, to give access to physical addresses
 int open_physical (int fd)
 {

@@ -75,6 +75,20 @@ typedef union{
 	}bits;
 }Switches;
 
+//GPIO Bit Structure, 6 nibbles (or 24 bits) are tied to the hex0 - Hex 5 BCD Decoder input
+typedef union{
+	unsigned int value;
+	struct{
+	unsigned int gpio0 : 4;
+	unsigned int gpio1 : 4;
+	unsigned int gpio2 : 4;
+	unsigned int gpio3 : 4;
+	unsigned int gpio4 : 4;
+	unsigned int gpio5 : 4;
+	unsigned int gpiou : 11;
+	}bits;
+}GpioRegister;
+
 
 int getHour() {
     time_t now;
@@ -179,6 +193,8 @@ int getSecond2() {
     double secondsElapsed = difftime(now, programStartTime);
     return ((int)secondsElapsed + initialSecond) % 60; // Calculate seconds
 }
+
+
 
 
 
