@@ -137,7 +137,6 @@ int main(void)
        return (-1);
    }
 
-   //====Stuff for 7-Segment
    // Set virtual address pointer to I/O port
       LEDR_ptr = (signed int *) (LW_virtual + LEDR_BASE);
       HEX_ptr = (signed int *)(LW_virtual + HEX3_HEX0_BASE);
@@ -147,39 +146,26 @@ int main(void)
       JP1_ptr = (unsigned int *)( LW_virtual + JP1_BASE);
 
 
-
-      //Registers=============
-     // dataRegister.value = 0;
-     // dataRegister2.value = 0;
-
+      //===================
       PushButton button;
       button.value = 0;
       Switches switch1;
       switch1.value = 0;
-
-      //*(JP1_ptr+ 1) = 0x00FFFFFF;
-      //gpioRegister = (GpioRegister*)(JP1_ptr + 0);
+      *(JP1_ptr+ 1) = 0x00FFFFFF;
+      gpioRegister1 = (GpioRegister)(*JP1_ptr);
 
 
 
 ///==============================
-
-//======LCD Stuff========
-  	virtual_base = mmap( NULL, HW_REGS_SPAN, ( PROT_READ | PROT_WRITE ), MAP_SHARED, fd, HW_REGS_BASE );
-
+//Need this do not erase
+virtual_base = mmap( NULL, HW_REGS_SPAN, ( PROT_READ | PROT_WRITE ), MAP_SHARED, fd, HW_REGS_BASE );
 //========================
-
-
-  	 gpioRegister1 = (GpioRegister)(*JP1_ptr);
-
    //===========================================
    //LCD Intro Message
    //================================
    //printf("Can you see LCD?(CTRL+C to terminate this program)\r\n");
    	printf("===Clock Program===\n");
-
     displayMessageOnLCD("Use Buttons To", "Set PT Then", "Flip SW0 to", "save it");
-
    	//============================================================
    	//===Start up LCD(set 7 segments to 0) that says to set time in hours and minutes===
    	//============================================================
@@ -297,8 +283,6 @@ int main(void)
            setHour(newHour); // Update hours
            setMinute(newMinute); // Update minutes
            setSecond(newSecond); // Update seconds
-           //then we display it like a clock
-           //updateDisplay(newHour, newMinute, newSecond);
 
    		//====Time Variables===
            //EASTER TIME
@@ -308,7 +292,7 @@ int main(void)
         	//CENTRAL TIME
             int hour1c = ((newHour + 2) % 24);
 
-  		   	     //======Pacific Time set by user
+//======Pacific Time set by user
   		   	     	   	     	   if (switch1.bits.sw1 == 1 && switch1.bits.sw9 != 1){
   		   	     	   	     		 if (flagP != 1){
   		   	     	   	     		displayMessageOnLCD("Displaying:", "Pacific Time", "Flip Sw1-4", "Only 1 Sw up");
@@ -318,7 +302,6 @@ int main(void)
   		   	     		   	     	   }else if(switch1.bits.sw1 == 0){
   		   	     		   	     		   flagP = 0;
   		   	     		   	     	   }
-
 
 //Eastern time
    		   	     	   if (switch1.bits.sw2 == 1 && switch1.bits.sw9 != 1){
@@ -332,7 +315,7 @@ int main(void)
    		   	     	   }
 
 
-   		   	     	   //Atlantic time
+//Atlantic time
    		   	     	   if (switch1.bits.sw3 == 1 && switch1.bits.sw9 != 1){
      		   	     		 if (flagA != 1){
      		   	     		displayMessageOnLCD("Displaying:", "Atlantic Time", "Flip Sw1-4", "Only 1 Sw up");
@@ -343,7 +326,7 @@ int main(void)
    	   		   	     	   }else if(switch1.bits.sw3 == 0){
    	   		   	     		   flagA = 0;
    		   	     	   }
-   		   	     	   //Central time
+//Central time
    		   	     	   if (switch1.bits.sw4 == 1 && switch1.bits.sw9 != 1){
    		   	     		 if (flagC != 1){
    		   	     		displayMessageOnLCD("Displaying:", "Central Time", "Flip Sw1-4", "Only 1 Sw up");
