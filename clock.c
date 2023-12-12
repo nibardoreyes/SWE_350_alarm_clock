@@ -4,9 +4,19 @@ Name		:	Nibardo Reyes Felix
 Author		:	Me
 Version		:	4.0
 Description	:	Alarm Clock Application
+Notes       :   You need to burn the DE10_Standard_Computer_time_limited.sof
+				onto the board in order for the application to run properly.
+				This file is located in the FPGA folder.
 ============================================
+========Summary about application===========
+The program is an alarm clock application designed for a hardware platform with an LCD
+screen, buttons, switches, and LEDs. It allows the user to set the current time, view time
+in different time zones (Pacific, Eastern, Atlantic, and Central), set alarms, and
+activate/deactivate these alarms. User inputs are handled using buttons and switches, and
+the current time and alarm status are displayed on the LCD and LEDs. The code handles hardware
+interfacing, time management, and user interaction for a comprehensive alarm clock functionality.
 */
-
+//=====Libraries===================
 #include "lcd/terasic_os_includes.h"
 #include "lcd/LCD_Lib.h"
 #include "lcd/lcd_graphic.h"
@@ -23,101 +33,38 @@ Description	:	Alarm Clock Application
 #include "./address_map_arm.h"
 #include "bcd2seven.h"
 #include "clock.h"
-
-//===Defines====
+/*
+Macros and global variables are defined for memory mapping and interfacing
+with hardware components like HEX displays, switches, keys, and GPIOs.
+*/
+//===Macros====
 #define HW_REGS_BASE ( ALT_STM_OFST )
 #define HW_REGS_SPAN ( 0x04000000 )
 //============
-//===Variables====
+//===Variables/Functions====
 int open_physical (int);
 void * map_physical (int, unsigned int, unsigned int);
 void close_physical (int);
 int unmap_physical (void *, unsigned int);
 void *virtual_base;
+void displayMessageOnLCD(char* line1, char* line2, char* line3, char* line4);
+void checkAlarm(int *alarmHour, int *alarmMinute, int *newHour, int *newMinute);
+void updateDisplay(int hour, int minute, int second);
 volatile signed int * HEX_ptr;	//virutal address pointer to Hex Dispay
 volatile signed int *HEX_ptr2; // Global definition of HEX_ptr2
 volatile signed int * SW_ptr;	///address pointer to the switches
 volatile signed int *KEY_ptr;     // virtual address for the KEY port
 volatile unsigned int *JP1_ptr;
 LCD_CANVAS LcdCanvas;
-DataRegister dataRegister;
-DataRegister2 dataRegister2;
 GpioRegister gpioRegister1;
-
-//Function
-void displayMessageOnLCD(char* line1, char* line2, char* line3, char* line4) {
-    // Create and initialize the LCD canvas
-    LCD_CANVAS LcdCanvas;
-    LcdCanvas.Width = LCD_WIDTH;
-    LcdCanvas.Height = LCD_HEIGHT;
-    LcdCanvas.BitPerPixel = 1;
-    LcdCanvas.FrameSize = LcdCanvas.Width * LcdCanvas.Height / 8;
-    LcdCanvas.pFrame = (void *)malloc(LcdCanvas.FrameSize);
-
-    // Initialize LCD hardware
-    LCDHW_Init(virtual_base);
-    LCDHW_BackLight(true);
-
-    LCD_Init();
-    DRAW_Clear(&LcdCanvas, LCD_WHITE);
-    DRAW_Rect(&LcdCanvas, 0, 0, LcdCanvas.Width - 1, LcdCanvas.Height - 1, LCD_BLACK);
-
-        // Print the message on the LCD canvas
-        DRAW_PrintString(&LcdCanvas, 5, 2, line1, LCD_BLACK, &font_16x16);
-        DRAW_PrintString(&LcdCanvas, 5, 2+12, line2, LCD_BLACK, &font_16x16);
-        DRAW_PrintString(&LcdCanvas, 5, 2+24, line3, LCD_BLACK, &font_16x16);
-        DRAW_PrintString(&LcdCanvas, 5, 2+36, line4, LCD_BLACK, &font_16x16);
-        DRAW_Refresh(&LcdCanvas);
-
-        free(LcdCanvas.pFrame);
-return;
-
-}
-
-void checkAlarm(int *alarmHour, int *alarmMinute, int *newHour, int *newMinute) {
-    if (*newHour  == *alarmHour && *newMinute == *alarmMinute) {
-        // Turn all 10 LEDs on
-        *LEDR_ptr = 0x3FF; // Assuming 10 LEDs are controlled by LEDR_ptr
-        usleep(250000); // Sleep for 0.5 seconds
-
-        // Turn all 10 LEDs off
-        *LEDR_ptr = 0x0;
-        usleep(500000); // Sleep for another 0.5 seconds
-
-        // Repeat the on-off cycle
-        *LEDR_ptr = 0x3FF; // Turn all LEDs on again
-        usleep(240000); // Sleep for 0.5 seconds
-
-        *LEDR_ptr = 0x0; // Turn all LEDs off again
-    }
-}
-
-void updateDisplay(int hour, int minute, int second) {
-    // Convert time values to their respective BCD representations for the display
-    int hour10 = hour / 10;
-    int hour1 = hour % 10;
-    int minute10 = minute / 10;
-    int minute1 = minute % 10;
-    int second10 = second / 10;
-    int second1 = second % 10;
-
-    // Set the BCD values to the display registers
-    gpioRegister1.bits.gpio5 = hour10;
-    gpioRegister1.bits.gpio4 = hour1;
-    gpioRegister1.bits.gpio3 = minute10;
-    gpioRegister1.bits.gpio2 = minute1;
-    gpioRegister1.bits.gpio1 = second10;
-    gpioRegister1.bits.gpio0 = second1;
-
-    // Update the 7-segment displays
-    *JP1_ptr = gpioRegister1.value;
-
-}
-
-
-//==============================
-//=======MAIN==================
-//=============================
+/*==============================
+=======MAIN=====================
+================================
+This is the main execution block. It initializes hardware mappings, sets up the LCD display, and
+enters a loop where it continuously updates the time and checks for user inputs using
+buttons and switches. The switches are used to set time, change time zones, and set/activate alarms
+================================
+*/
 int main(void)
 {
 
@@ -280,10 +227,6 @@ virtual_base = mmap( NULL, HW_REGS_SPAN, ( PROT_READ | PROT_WRITE ), MAP_SHARED,
                }
 
            }
-           setHour(newHour); // Update hours
-           setMinute(newMinute); // Update minutes
-           setSecond(newSecond); // Update seconds
-
    		//====Time Variables===
            //EASTER TIME
             int hour1e = ((newHour + 3) % 24) ;
@@ -352,8 +295,6 @@ virtual_base = mmap( NULL, HW_REGS_SPAN, ( PROT_READ | PROT_WRITE ), MAP_SHARED,
    		   		//read first switch orientation
    		   		   	switch1.value = *SW_ptr;
    			   	        	if (switch1.bits.sw9 == 1){
-   			   	        	dataRegister2.value = *HEX_ptr2;
-   			   	        	dataRegister.value = *HEX_ptr;
    			   	        	//allow user to set an alarm for pacific time zone
    			   	         updateDisplay(00, 00, 00);
    			   	   if (flagAlarm != 1){
@@ -482,4 +423,73 @@ int unmap_physical(void * virtual_base, unsigned int span)
    return 0;
 }
 
+//Function that initializes LCD and displays a message consisting of 4 lines
+void displayMessageOnLCD(char* line1, char* line2, char* line3, char* line4) {
+    // Create and initialize the LCD canvas
+    LCD_CANVAS LcdCanvas;
+    LcdCanvas.Width = LCD_WIDTH;
+    LcdCanvas.Height = LCD_HEIGHT;
+    LcdCanvas.BitPerPixel = 1;
+    LcdCanvas.FrameSize = LcdCanvas.Width * LcdCanvas.Height / 8;
+    LcdCanvas.pFrame = (void *)malloc(LcdCanvas.FrameSize);
 
+    // Initialize LCD hardware
+    LCDHW_Init(virtual_base);
+    LCDHW_BackLight(true);
+
+    LCD_Init();
+    DRAW_Clear(&LcdCanvas, LCD_WHITE);
+    DRAW_Rect(&LcdCanvas, 0, 0, LcdCanvas.Width - 1, LcdCanvas.Height - 1, LCD_BLACK);
+
+        // Print the message on the LCD canvas
+        DRAW_PrintString(&LcdCanvas, 5, 2, line1, LCD_BLACK, &font_16x16);
+        DRAW_PrintString(&LcdCanvas, 5, 2+12, line2, LCD_BLACK, &font_16x16);
+        DRAW_PrintString(&LcdCanvas, 5, 2+24, line3, LCD_BLACK, &font_16x16);
+        DRAW_PrintString(&LcdCanvas, 5, 2+36, line4, LCD_BLACK, &font_16x16);
+        DRAW_Refresh(&LcdCanvas);
+
+        free(LcdCanvas.pFrame);
+return;
+
+}
+//Function compares the current time with a set alarm time and triggers a sequence of LED flashes if they match.
+void checkAlarm(int *alarmHour, int *alarmMinute, int *newHour, int *newMinute) {
+    if (*newHour  == *alarmHour && *newMinute == *alarmMinute) {
+        // Turn all 10 LEDs on
+        *LEDR_ptr = 0x3FF; // Assuming 10 LEDs are controlled by LEDR_ptr
+        usleep(250000); // Sleep for 0.5 seconds
+
+        // Turn all 10 LEDs off
+        *LEDR_ptr = 0x0;
+        usleep(500000); // Sleep for another 0.5 seconds
+
+        // Repeat the on-off cycle
+        *LEDR_ptr = 0x3FF; // Turn all LEDs on again
+        usleep(240000); // Sleep for 0.5 seconds
+
+        *LEDR_ptr = 0x0; // Turn all LEDs off again
+    }
+}
+
+//Function tupdates the time display on the hardware, the 7 segment display, with the current time.
+void updateDisplay(int hour, int minute, int second) {
+    // Convert time values to their respective BCD representations for the display
+    int hour10 = hour / 10;
+    int hour1 = hour % 10;
+    int minute10 = minute / 10;
+    int minute1 = minute % 10;
+    int second10 = second / 10;
+    int second1 = second % 10;
+
+    // Set the BCD values to the display registers
+    gpioRegister1.bits.gpio5 = hour10;
+    gpioRegister1.bits.gpio4 = hour1;
+    gpioRegister1.bits.gpio3 = minute10;
+    gpioRegister1.bits.gpio2 = minute1;
+    gpioRegister1.bits.gpio1 = second10;
+    gpioRegister1.bits.gpio0 = second1;
+
+    // Update the 7-segment displays
+    *JP1_ptr = gpioRegister1.value;
+
+}
